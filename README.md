@@ -1,93 +1,63 @@
-# ⛈️ StormWatch — Previsão de Tempestades com Busca Dinâmica
+# 🧠 Melhorias nos Modelos de Previsão — StormWatch SP
 
-## O que mudou?
+## Resumo das alterações
 
-O sistema foi reformulado para **eliminar a lista fixa de bairros/URLs hardcoded**.
-Agora você pode pesquisar **qualquer cidade, bairro ou endereço do mundo**.
-
----
-
-## 🚀 Como rodar
-
-```bash
-pip install -r requirements.txt
-streamlit run app.py
-```
+Os modelos de machine learning responsáveis pela previsão de **tempestades** e **enchentes** foram reformulados para aumentar a confiabilidade, a precisão e a capacidade de generalização, mantendo o treinamento instantâneo (on‑the‑fly) a cada consulta.
 
 ---
 
-## 🗺️ Como funciona a busca de localidade
+## ⛈️ Tempestade — de Regressão Linear para Random Forest
 
-1. Digite o nome da cidade, bairro ou endereço na barra de pesquisa
-2. Clique em **🔍 Buscar** — o sistema consulta a **Open-Meteo Geocoding API**
-3. Selecione a localidade correta na lista de resultados
-4. Clique em **✔️ Usar esta localidade**
-5. Os dados meteorológicos são carregados automaticamente via Open-Meteo
+**Antes:** uma regressão linear usava apenas o índice da data (`date_num`) para prever a chuva do dia seguinte.
 
-```
-Barra de pesquisa → Geocoding API → lat/lon → Weather API → Análise + ML
-```
+**Agora:** um **RandomForestRegressor** leve (20 árvores, profundidade máxima 4) considera múltiplas variáveis meteorológicas recentes:
 
-**Não são necessárias chaves de API** para Open-Meteo.
+- `rain_lag1`, `rain_lag2` — chuva dos dias anteriores
+- `precipitation_hours` — horas de precipitação
+- `precipitation_probability_max` — probabilidade máxima de chuva fornecida pela API
+- `relative_humidity_2m_mean` — umidade média
+- `rain_trend` — tendência (diferença) da chuva
 
----
-
-## 🔄 O que foi removido
-
-| Antes | Depois |
-|---|---|
-| `neighborhoods = {"Capão Redondo": os.environ.get("API_...")}` | ❌ Removido |
-| Variáveis de ambiente com URLs fixas | ❌ Removidas |
-| `selectbox` com lista hardcoded | ✅ Campo de texto com busca |
+**Por que é melhor?**  
+O Random Forest captura relações não lineares e interações entre variáveis (ex.: chuva persistente + alta probabilidade → tempestade), reduz falsos negativos e é menos sensível a *outliers* do que a regressão linear.
 
 ---
 
-## ⚙️ Variáveis de ambiente ainda necessárias
+## 🌊 Enchente — Gradient Boosting com novas features e validação
 
-Apenas para alertas por SMS/e-mail (opcionais):
+**Antes:** Gradient Boosting Classifier com um conjunto limitado de variáveis.
 
-```env
-# .env
-TWILIO_ACCOUNT_SID=...
-TWILIO_AUTH_TOKEN=...
-TWILIO_PHONE_NUMBER=+1...
+**Agora:** o modelo foi **expandido** com três novas *features* e um pequeno esquema de validação:
 
-SENDGRID_API_KEY=...
-FROM_EMAIL=seu@email.com
-```
+**Novas features:**
+- `temperature_2m_min` — temperatura mínima (solos quentes e úmidos favorecem enchentes)
+- `et0_fao_evapotranspiration` — evapotranspiração de referência (indicador de saturação do solo)
+- `discharge_trend` — tendência da descarga do rio (variação recente da vazão)
 
-O app funciona normalmente **sem essas variáveis** — apenas os alertas ficam desativados.
+**Validação interna:**  
+Os últimos 3 dias do histórico são reservados para teste. Se o modelo treinado com os dados restantes falhar ou não tiver classes suficientes, o sistema recorre automaticamente às regras de limiares (*fallback*).
 
----
+**Configuração ajustada:**
+- `n_estimators=100`, `max_depth=3`, `learning_rate=0.1`, `subsample=0.8`
+- Pipeline com `StandardScaler` + `GradientBoostingClassifier`
 
-## 📁 Estrutura
-
-```
-storm_app/
-├── app.py          # Interface Streamlit — busca dinâmica de localidade
-├── backend.py      # Geocoding, fetch meteorológico, ML, alertas
-├── requirements.txt
-├── Dados/          # CSVs históricos salvos por localidade
-│   └── subscriptions.csv
-└── .env            # (opcional) credenciais Twilio/SendGrid
-```
+**Por que é melhor?**  
+As novas variáveis permitem que o modelo entenda melhor a condição do solo e a dinâmica do rio, antecipando enchentes mesmo quando a chuva acumulada ainda não atingiu os limiares críticos.
 
 ---
 
-## 🆕 Novas funções no `backend.py`
+## ⚡ Desempenho e integração
 
-| Função | Descrição |
-|---|---|
-| `search_location(query)` | Geocodifica texto → lista de localidades com lat/lon |
-| `build_weather_url(lat, lon, days)` | Monta URL da Open-Meteo a partir de coordenadas |
-| `forecast_storm(df)` | Retorna dict com nível de risco, probabilidade e mensagem |
+- Ambos os modelos são treinados **a cada requisição** com os dados históricos já disponíveis (90 dias meteorológicos, 180 dias de rios).
+- O tempo de treinamento é de **milissegundos**, sem necessidade de pré‑processamento ou servidores externos.
+- A interface do usuário e as assinaturas de alerta continuam funcionando exatamente da mesma forma – apenas as funções `forecast_storm()` e `forecast_flood()` em `backend.py` foram alteradas.
 
 ---
 
-## 💡 Exemplos de pesquisa
+## 📁 Arquivo afetado
 
-- `Capão Redondo` → resulta em Capão Redondo, São Paulo — Brasil
-- `Jardim Angela` → múltiplos resultados, escolha SP
-- `Rio de Janeiro` → cidade inteira
-- `Manaus, AM` → cidade + estado
-- `Porto Alegre` → mostra resultados do Brasil e outros países
+- `backend.py` – funções `forecast_storm()`, `forecast_flood()` e novas auxiliares `_extra_features()`.
+
+---
+
+**Essas melhorias tornam o StormWatch SP mais preciso e preparado para eventos climáticos extremos, sem adicionar complexidade operacional.**
