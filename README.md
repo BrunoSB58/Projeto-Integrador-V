@@ -74,7 +74,7 @@ Proteger vidas e patrimônio através de alertas antecipados de eventos climáti
 ## 🛠️ Tecnologias
 
 ### Core
-- **Python 3.8+**
+- **Python 3.14**
 - **Streamlit** - Framework web
 - **Pandas** - Manipulação de dados
 - **NumPy** - Operações numéricas
