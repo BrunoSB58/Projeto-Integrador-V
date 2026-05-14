@@ -4,8 +4,8 @@ backend.py — StormWatch SP
   • Previsão de Tempestade via Random Forest Regressor
   • Previsão de Enchente via Gradient Boosting (Open-Meteo Flood API)
   • Alertas por SMS (Twilio) e E-mail (SendGrid)
-  • Cadastros persistidos em PostgreSQL (nada exposto em CSV)
-  • ✨ NOVO: Sistema de ID alfanumérico para gerenciar cadastros
+  • Cadastros persistidos em PostgreSQL
+  • Histórico meteorológico persistido em PostgreSQL (substitui CSV)
 """
 
 import os
@@ -28,9 +28,6 @@ import psycopg2
 from psycopg2 import sql
 
 load_dotenv()
-
-DATA_FOLDER = "Dados"
-os.makedirs(DATA_FOLDER, exist_ok=True)
 
 # ─── Endpoints Open-Meteo ────────────────────────────────────────────
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
@@ -101,8 +98,10 @@ def get_db_connection():
 
 
 def init_database():
+    """Cria as tabelas necessárias no banco de dados."""
     conn = get_db_connection()
     cur = conn.cursor()
+    # Tabela de inscrições (já existente)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS subscriptions (
             id VARCHAR(10) PRIMARY KEY,
@@ -112,6 +111,32 @@ def init_database():
             localidade VARCHAR(255) NOT NULL,
             tipo_alerta VARCHAR(50) NOT NULL,
             data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    # Nova tabela para histórico meteorológico
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS weather_history (
+            id SERIAL PRIMARY KEY,
+            location_key VARCHAR(255) NOT NULL,
+            data DATE NOT NULL,
+            rain_sum DOUBLE PRECISION,
+            precipitation_sum DOUBLE PRECISION,
+            precipitation_hours DOUBLE PRECISION,
+            precipitation_probability_max DOUBLE PRECISION,
+            temperature_2m_max DOUBLE PRECISION,
+            temperature_2m_min DOUBLE PRECISION,
+            temperature_2m_mean DOUBLE PRECISION,
+            relative_humidity_2m_mean DOUBLE PRECISION,
+            windspeed_10m_max DOUBLE PRECISION,
+            et0_fao_evapotranspiration DOUBLE PRECISION,
+            shortwave_radiation_sum DOUBLE PRECISION,
+            precip_acum_3d DOUBLE PRECISION,
+            precip_acum_7d DOUBLE PRECISION,
+            precip_acum_14d DOUBLE PRECISION,
+            rain_lag1 DOUBLE PRECISION,
+            rain_lag2 DOUBLE PRECISION,
+            rain_trend DOUBLE PRECISION,
+            UNIQUE(location_key, data)
         )
     """)
     conn.commit()
@@ -605,19 +630,67 @@ def _chave(name: str) -> str:
     return re.sub(r"[^\w\-]", "_", name.lower()).strip("_")
 
 
+# ════════════════════════════════════════════════════════════════════
+#  HISTÓRICO METEOROLÓGICO (POSTGRESQL) — substitui arquivos CSV
+# ════════════════════════════════════════════════════════════════════
+
 def update_historical_data(df_new: pd.DataFrame, location_name: str) -> tuple[str, pd.DataFrame]:
-    key      = _chave(location_name)
-    filename = os.path.join(DATA_FOLDER, f"dados_{key}.csv")
-    if os.path.exists(filename):
-        try:
-            df_h = pd.read_csv(filename, parse_dates=["data"])
-            df_combined = (pd.concat([df_h, df_new])
-                           .drop_duplicates(subset=["data"])
-                           .sort_values("data")
-                           .reset_index(drop=True))
-        except Exception:
-            df_combined = df_new
+    """
+    Persiste os dados no banco (tabela weather_history) e retorna
+    o histórico completo da localidade.
+    """
+    # Garantir que a tabela exista
+    init_database()
+
+    key = _chave(location_name)
+    filename = f"dados_{key}.csv"  # mantido para compatibilidade com frontend (download)
+
+    conn = get_db_connection()
+    try:
+        # 1. Recuperar dados existentes do banco
+        existing = pd.read_sql_query(
+            "SELECT * FROM weather_history WHERE location_key = %s ORDER BY data",
+            conn,
+            params=(key,),
+        )
+        if not existing.empty:
+            existing = existing.drop(columns=["id", "location_key"], errors="ignore")
+            existing["data"] = pd.to_datetime(existing["data"])
+    except Exception:
+        existing = pd.DataFrame()
+
+    # 2. Combinar histórico existente com os novos dados
+    if not existing.empty:
+        combined = (pd.concat([existing, df_new])
+                    .drop_duplicates(subset=["data"])
+                    .sort_values("data")
+                    .reset_index(drop=True))
     else:
-        df_combined = df_new
-    df_combined.to_csv(filename, index=False)
-    return filename, df_combined
+        combined = df_new.copy()
+
+    # 3. Substituir registros antigos da localidade e inserir os combinados
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM weather_history WHERE location_key = %s", (key,))
+
+        # ⚠️ CORREÇÃO: excluir 'data' da lista dinâmica, pois já é inserida separadamente
+        cols = [col for col in combined.columns if col != "data"]
+
+        placeholders = sql.SQL(", ").join([sql.Placeholder() for _ in cols])
+        insert_sql = sql.SQL(
+            "INSERT INTO weather_history (location_key, data, {}) VALUES (%s, %s, {}) ON CONFLICT DO NOTHING"
+        ).format(
+            sql.SQL(", ").join([sql.Identifier(col) for col in cols]),
+            placeholders
+        )
+
+        records = []
+        for _, row in combined.iterrows():
+            date_val = row["data"].date() if hasattr(row["data"], "date") else row["data"]
+            values = [key, date_val] + [row[col] for col in cols]
+            records.append(tuple(values))
+
+        cur.executemany(insert_sql, records)
+        conn.commit()
+
+    conn.close()
+    return filename, combined
