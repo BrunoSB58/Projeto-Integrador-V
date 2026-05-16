@@ -581,11 +581,8 @@ stormwatch-sp/
 ├── app.py                      # ⚙️ Ponto de entrada (inicialização)
 ├── frontend.py                 # 🎨 Interface do usuário (Streamlit UI/UX)
 ├── backend.py                  # 🤖 Lógica de negócio, ML, APIs e Monitor
-├── dados_historicos/           # 📊 Armazenamento de CSVs por localidade
-│   ├── dados_sao_paulo_sp.csv
-│   ├── dados_guarulhos_sp.csv
-│   └── ...
-├── subscriptions.json          # 💾 Cadastros de alertas (UUID, email, tel, etc.)
+├── monitor_alertas.py          # 📊 Leitura períodica dos cadastros no DB
+|  
 ├── .env                        # 🔐 Variáveis de ambiente (não versionado)
 ├── requirements.txt            # 📦 Dependências Python
 └── README.md                   # 📖 Este arquivo
