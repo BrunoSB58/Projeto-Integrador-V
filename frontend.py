@@ -329,11 +329,11 @@ def render_sidebar():
         st.markdown("---")
         st.markdown("""
         <small style='color:#4a5568'>
-        <b>Dados:</b> Open-Meteo Forecast API<br>
+        <b>Dados:</b> CETESB - Open-Meteo Forecast API<br>
         <b>Histórico:</b> 90 dias (3 meses)<br>
         <b>Enchentes:</b> Open-Meteo Flood API (GloFAS)<br>
         <b>Histórico Rios:</b> 180 dias (6 meses)<br>
-        <b>Geocoding:</b> Open-Meteo (apenas SP)<br>
+        <b>Geocoding:</b> CETESB (apenas SP)<br>
         <b>Alertas:</b> Twilio SMS + SendGrid E-mail<br><br>
         Nenhuma chave de API necessária para dados.
         </small>
@@ -347,7 +347,7 @@ def render_header():
     <div class="hero">
       <h1>⛈️ StormWatch SP</h1>
       <p class="sub">Previsão de <strong>tempestades</strong> e <strong>enchentes</strong>
-         com Inteligência Artificial — Open-Meteo API</p>
+         com Inteligência Artificial — CETESB - Open-Meteo API</p>
       <span class="badge">📍 Estado de São Paulo</span>
       <span class="badge">🌊 Flood API GloFAS</span>
       <span class="badge">🤖 ML em tempo real</span>
@@ -357,13 +357,13 @@ def render_header():
 
 def render_location_search():
     """Renderiza seção de busca de localidade"""
-    st.markdown('<div class="sec-title">🔍 Buscar Localidade em São Paulo</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-title">🔍 Buscar Localidades no Estado de São Paulo</div>', unsafe_allow_html=True)
 
     col_input, col_btn = st.columns([5, 1])
     with col_input:
         query = st.text_input(
             "busca", label_visibility="collapsed",
-            placeholder="Ex: Capão Redondo  |  Guarulhos  |  Campinas  |  Santos  |  Sorocaba",
+            placeholder="Pesquise por Cidades ou Distritos - Ex: Capão Redondo  |  Guarulhos  |  Campinas  |  Santos  |  Sorocaba",
         )
     with col_btn:
         buscar = st.button("🔍 Buscar", use_container_width=True, type="primary")
