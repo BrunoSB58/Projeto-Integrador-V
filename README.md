@@ -574,7 +574,7 @@ sudo systemctl status stormwatch
 
 ---
 
-## 📁 Estrutura do Projeto
+## 📁 Arquivos do Projeto
 
 ```
 stormwatch-sp/
